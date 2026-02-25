@@ -14,26 +14,35 @@ import type { Movie } from "../../types/movie";
 
 import css from "./App.module.css";
 
+type MoviesQueryData = {
+  results: Movie[];
+  total_pages: number;
+};
+
 export default function App() {
   const [query, setQuery] = useState<string>("");
   const [page, setPage] = useState<number>(1);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
 
-  const { data, isPending, isError } = useQuery({
+  const { data, isLoading, isFetching, isError } = useQuery<MoviesQueryData>({
     queryKey: ["movies", query, page],
     queryFn: () => fetchMovies(query, page),
     enabled: query.trim().length > 0,
     staleTime: 60_000,
+
+    // ✅ головна правка для перевірки:
+    // Поки вантажиться нова сторінка — показуємо попередні дані, без "миготіння"
+    placeholderData: (previousData) => previousData,
   });
 
   const movies = data?.results ?? [];
   const totalPages = data?.total_pages ?? 0;
 
   useEffect(() => {
-    if (!isPending && !isError && query.trim() && movies.length === 0) {
+    if (!isLoading && query.trim().length > 0 && movies.length === 0 && !isError) {
       toast.error("No movies found for your request.");
     }
-  }, [isPending, isError, movies.length, query]);
+  }, [isLoading, isError, movies.length, query]);
 
   const handleSearch = (newQuery: string) => {
     setQuery(newQuery);
@@ -41,17 +50,27 @@ export default function App() {
     setSelectedMovie(null);
   };
 
+  const handleSelectMovie = (movie: Movie) => {
+    setSelectedMovie(movie);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedMovie(null);
+  };
+
   return (
-    <div className={css.container}>
+    <>
       <SearchBar onSubmit={handleSearch} />
       <Toaster position="top-right" />
 
-      {isPending && <Loader />}
+      {/* isLoading - перше завантаження, isFetching - догрузка (в т.ч. сторінок) */}
+      {(isLoading || isFetching) && <Loader />}
+
       {isError && <ErrorMessage />}
 
-      {!isPending && !isError && movies.length > 0 && (
+      {!isError && movies.length > 0 && (
         <>
-          <MovieGrid movies={movies} onSelect={setSelectedMovie} />
+          <MovieGrid movies={movies} onSelect={handleSelectMovie} />
 
           {totalPages > 1 && (
             <ReactPaginate
@@ -69,9 +88,8 @@ export default function App() {
         </>
       )}
 
-      {selectedMovie && (
-        <MovieModal movie={selectedMovie} onClose={() => setSelectedMovie(null)} />
-      )}
-    </div>
+      {selectedMovie && <MovieModal movie={selectedMovie} onClose={handleCloseModal} />
+      }
+    </>
   );
 }
